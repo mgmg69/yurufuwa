@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yurufuwa Girls Talk AI</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide-react.js"></script>
+    <style>
+        body {
+            font-family: "Zen Maru Gothic", "Rounded Mplus 1c", "Hiragino Maru Gothic ProN", "Corporate Logo Medium", "Meiryo", sans-serif;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.8s ease-out forwards;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        
+        const getIcon = (name) => {
+            const icons = window.LucideReact || {};
+            return icons[name] || (() => <span className="text-[10px]">?</span>);
+        };
+
+        const Heart = ({ size, fill, className }) => {
+            const Icon = getIcon('Heart');
+            return <Icon size={size} fill={fill} className={className} />;
+        };
+        const Sparkles = ({ size, className }) => {
+            const Icon = getIcon('Sparkles');
+            return <Icon size={size} className={className} />;
+        };
+        const Play = ({ size, fill, className }) => {
+            const Icon = getIcon('Play');
+            return <Icon size={size} fill={fill} className={className} />;
+        };
+        const Square = ({ size, fill, className }) => {
+            const Icon = getIcon('Square');
+            return <Icon size={size} fill={fill} className={className} />;
+        };
+        const RefreshCw = ({ size, className }) => {
+            const Icon = getIcon('RefreshCw');
+            return <Icon size={size} className={className} />;
+        };
+
+        const MODEL_TEXT = "gemini-2.5-flash-preview-09-2025"; 
+        const apiKey = ""; // API key managed by environment
+
+        const CHARACTERS = {
+          yuna: {
+            name: "ゆな",
+            color: "bg-pink-100",
+            textColor: "text-pink-600",
+            border: "border-pink-200",
+            icon: "🌸",
+            personality: "おっとりしていて、カフェ巡りが大好き。語尾に「〜だねぇ」「〜かなっ」がつく優しい口調。"
+          },
+          mami: {
+            name: "まみ",
+            color: "bg-blue-100",
+            textColor: "text-blue-600",
+            border: "border-blue-200",
+            icon: "🌹",
+            personality: "天真難漫で、ちょっと天然。キラキラしたものや可愛いものが大好き。元気だけどゆるい口調。"
+          }
+        };
+
+        const App = () => {
+          const [messages, setMessages] = useState([]);
+          const [isTalking, setIsTalking] = useState(false);
+          const [currentSpeaker, setCurrentSpeaker] = useState('yuna');
+          const [loading, setLoading] = useState(false);
+          const [sceneImage, setSceneImage] = useState(null);
+          const [imageLoading, setImageLoading] = useState(false);
+          const [errorMessage, setErrorMessage] = useState(null);
+          const scrollRef = useRef(null);
+
+          useEffect(() => {
+            if (scrollRef.current) {
+              scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            }
+          }, [messages]);
+
+          const callGemini = async (payload, retries = 5, delay = 1000) => {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_TEXT}:generateContent?key=${apiKey}`;
+            try {
+              const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+              if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+              const data = await response.json();
+              return data.candidates?.[0]?.content?.parts?.[0]?.text;
+            } catch (error) {
+              if (retries > 0) {
+                await new Promise(r => setTimeout(r, delay));
+                return callGemini(payload, retries - 1, delay * 2);
+              }
+              throw error;
+            }
+          };
+
+          const generateText = async (history) => {
+            const speaker = CHARACTERS[currentSpeaker];
+            const other = CHARACTERS[currentSpeaker === 'yuna' ? 'mami' : 'yuna'];
+            const systemPrompt = `あなたは日本の女の子「${speaker.name}」です。性格：${speaker.personality} 親友の「${other.name}」と二人でまったりガールズトークをしています。非常にゆるく、ふわふわした、癒やされる会話をしてください。相手の発言に反応しつつ、自然な日本語で2〜3文で返答してください。`;
+
+            let prompt = "";
+            if (history.length === 0) {
+              prompt = "会話を始めて！まずは挨拶から。ゆなとして話して。";
+            } else {
+              const historyText = history.slice(-5).map(m => `${m.name}: ${m.text}`).join("\n");
+              prompt = `これまでの会話:\n${historyText}\n\n次は${speaker.name}の番です。自然に会話を続けて。`;
+            }
+
+            try {
+              setErrorMessage(null);
+              const text = await callGemini({
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] }
+              });
+              return text;
+            } catch (e) {
+              console.error("Gemini Error:", e);
+              setErrorMessage("通信エラーかな？少し待ってからまた試してね.");
+              return null;
+            }
+          };
+
+          const generateImage = async (retryCount = 0) => {
+            if (imageLoading && retryCount === 0) return;
+            if (loading || messages.length === 0) return;
+            
+            setImageLoading(true);
+            setErrorMessage(null);
+
+            try {
+              const historyText = messages.slice(-5).map(m => m.text).join(" ");
+              const promptRequest = `Describe the current location of the conversation in 3 keywords. Reply ONLY with keywords separated by spaces. Example: "cafe sweets morning" \n\nConversation: ${historyText}`;
+              
+              const keywords = await callGemini({
+                contents: [{ parts: [{ text: promptRequest }] }]
+              });
+
+              let rawKeywords = keywords || "cozy room pastel";
+              const cleanKeywords = rawKeywords.replace(/[^a-zA-Z\s]/g, "").trim().split(/\s+/).join(" ");
+              
+              // 自然なスペース区切りプロンプト
+              const finalPrompt = `${cleanKeywords} anime background style soft lighting pastel aesthetic no-people`;
+              
+              const seed = Math.floor(Math.random() * 1000000);
+              const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
+              
+              const img = new Image();
+              const timeout = setTimeout(() => {
+                img.src = ""; 
+                if (retryCount < 2) {
+                    generateImage(retryCount + 1);
+                } else {
+                    setImageLoading(false);
+                    setErrorMessage("画像の生成がタイムアウトしました。");
+                }
+              }, 15000);
+
+              img.onload = () => {
+                clearTimeout(timeout);
+                setSceneImage(imageUrl);
+                setImageLoading(false);
+              };
+              img.onerror = () => {
+                clearTimeout(timeout);
+                if (retryCount < 2) {
+                    generateImage(retryCount + 1);
+                } else {
+                    setImageLoading(false);
+                    setErrorMessage("画像の表示に失敗しました。");
+                    console.error("Final Image load failure:", imageUrl);
+                }
+              };
+              img.src = imageUrl;
+
+            } catch (e) {
+              console.error("Image Logic Error:", e);
+              setImageLoading(false);
+            }
+          };
+
+          const nextTurn = async () => {
+            if (loading || imageLoading) return;
+            setLoading(true);
+            const text = await generateText(messages);
+            if (text) {
+              setMessages(prev => [...prev, { 
+                id: Date.now(), 
+                speaker: currentSpeaker, 
+                name: CHARACTERS[currentSpeaker].name, 
+                text: text, 
+                icon: CHARACTERS[currentSpeaker].icon 
+              }]);
+              setCurrentSpeaker(prev => prev === 'yuna' ? 'mami' : 'yuna');
+            }
+            setLoading(false);
+          };
+
+          useEffect(() => {
+            let timer;
+            if (isTalking && !loading && !imageLoading && !errorMessage) {
+              timer = setTimeout(() => { nextTurn(); }, 10000); 
+            }
+            return () => clearTimeout(timer);
+          }, [isTalking, loading, imageLoading, currentSpeaker, errorMessage, messages.length]);
+
+          const toggleTalking = () => {
+            const turningOn = !isTalking;
+            setIsTalking(turningOn);
+            setErrorMessage(null);
+            if (turningOn && messages.length === 0) nextTurn();
+          };
+
+          const resetTalk = () => {
+            setMessages([]); 
+            setIsTalking(false); 
+            setCurrentSpeaker('yuna'); 
+            setSceneImage(null); 
+            setErrorMessage(null);
+          };
+
+          return (
+            <div className="flex flex-col h-screen bg-slate-50 text-slate-800 overflow-hidden">
+              <header className="p-4 bg-white border-b flex justify-between items-center shadow-sm z-10">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-pink-100 rounded-full text-pink-500">
+                    <Heart size={20} fill="currentColor" />
+                  </div>
+                  <h1 className="text-lg font-bold tracking-tighter">ゆるふわトークAI</h1>
+                </div>
+                <button onClick={resetTalk} className="p-2 text-slate-400 hover:text-slate-600 transition-colors bg-slate-50 rounded-full">
+                  <RefreshCw size={20} />
+                </button>
+              </header>
+              <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+                {/* 背景画像エリア: 30% */}
+                <div className="w-full md:w-[30%] h-[300px] md:h-full bg-slate-100 relative overflow-hidden flex flex-col shadow-inner border-r border-slate-200">
+                  <div className="absolute top-0 left-0 right-0 p-4 z-30 flex flex-col gap-2 bg-gradient-to-b from-black/20 to-transparent">
+                    <button 
+                      onClick={() => generateImage(0)} 
+                      disabled={imageLoading || loading || messages.length === 0}
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 shadow-lg rounded-xl font-bold transition-all active:scale-95 ${imageLoading || loading || messages.length === 0 ? 'bg-slate-100 text-slate-300 cursor-not-allowed border-transparent' : 'bg-white text-pink-500 hover:bg-pink-50 border border-pink-100'}`}
+                    >
+                      <Sparkles size={18} />
+                      <span className="text-xs">背景を更新</span>
+                    </button>
+                  </div>
+
+                  <div className="flex-1 relative flex items-center justify-center bg-slate-200">
+                    {imageLoading && (
+                      <div className="absolute inset-0 z-20 bg-white/40 backdrop-blur-[2px] flex items-center justify-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="animate-spin text-pink-400"><Sparkles size={32} /></div>
+                        </div>
+                      </div>
+                    )}
+                    {sceneImage ? (
+                      <img key={sceneImage} src={sceneImage} className="w-full h-full object-cover animate-fade-in" alt="Scene" />
+                    ) : (
+                      <div className="text-slate-400 flex flex-col items-center p-8 text-center justify-center w-full h-full">
+                        <Sparkles size={48} className="mb-4 opacity-10" />
+                        <p className="text-[10px]">背景を生成してください</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end pointer-events-none z-20">
+                    <div className={`px-3 py-1.5 rounded-full border-2 transition-all duration-500 text-xs font-bold ${currentSpeaker === 'yuna' ? 'bg-pink-50 border-pink-300 scale-110 shadow-lg text-pink-600' : 'bg-white/80 border-transparent opacity-60 text-slate-400'}`}>🌸 ゆな</div>
+                    <div className={`px-3 py-1.5 rounded-full border-2 transition-all duration-500 text-xs font-bold ${currentSpeaker === 'mami' ? 'bg-blue-50 border-blue-300 scale-110 shadow-lg text-blue-600' : 'bg-white/80 border-transparent opacity-60 text-slate-400'}`}>🌹 まみ</div>
+                  </div>
+                </div>
+
+                {/* チャットエリア: 70% */}
+                <div className="flex-1 md:w-[70%] flex flex-col h-full bg-white shadow-2xl z-10">
+                  <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-b from-white to-pink-50/10">
+                    {messages.map((msg) => (
+                      <div key={msg.id} className={`flex w-full animate-in slide-in-from-bottom-2 duration-300 ${msg.speaker === 'yuna' ? 'justify-start' : 'justify-end'}`}>
+                        <div className={`flex max-w-[85%] ${msg.speaker === 'yuna' ? 'flex-row' : 'flex-row-reverse'} gap-2`}>
+                          <div className={`w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center text-xl shadow-sm border border-white ${CHARACTERS[msg.speaker].color}`}>{msg.icon}</div>
+                          <div className={`p-3 rounded-2xl border shadow-sm ${CHARACTERS[msg.speaker].color} ${CHARACTERS[msg.speaker].border}`}>
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {loading && (
+                      <div className={`flex w-full ${currentSpeaker === 'yuna' ? 'justify-start' : 'justify-end'}`}>
+                        <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex gap-1.5 shadow-sm">
+                          <div className="w-2 h-2 bg-pink-300 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-pink-300 rounded-full animate-bounce delay-75"></div>
+                          <div className="w-2 h-2 bg-pink-300 rounded-full animate-bounce delay-150"></div>
+                        </div>
+                      </div>
+                    )}
+                    {errorMessage && <div className="mx-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-[10px] text-center">{errorMessage}</div>}
+                  </div>
+                  <div className="p-4 bg-white border-t">
+                    <button onClick={toggleTalking} disabled={loading} className={`w-full py-4 rounded-2xl flex items-center justify-center gap-2 font-bold text-white transition-all transform active:scale-95 shadow-md ${isTalking ? 'bg-slate-700 hover:bg-slate-800' : 'bg-pink-400 hover:bg-pink-500'}`}>
+                      {isTalking ? <><Square size={20} fill="currentColor" /> 停止</> : <><Play size={20} fill="currentColor" /> トーク開始</>}
+                    </button>
+                  </div>
+                </div>
+              </main>
+            </div>
+          );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
