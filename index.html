@@ -3,325 +3,376 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yurufuwa Girls Talk AI</title>
+    <title>Yurufuwa Elegant Talk</title>
+    <!-- React & Babel for direct browser execution -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide-react.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        body {
-            font-family: "Zen Maru Gothic", "Rounded Mplus 1c", "Hiragino Maru Gothic ProN", "Corporate Logo Medium", "Meiryo", sans-serif;
+        @keyframes spin-slow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        .animate-fade-in {
-            animation: fadeIn 0.8s ease-out forwards;
+        .animate-spin-slow {
+            animation: spin-slow 8s linear infinite;
         }
     </style>
-    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
 </head>
-<body class="bg-slate-50">
+<body>
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
-        
-        const getIcon = (name) => {
-            const icons = window.LucideReact || {};
-            return icons[name] || (() => <span className="text-[10px]">?</span>);
-        };
 
-        const Heart = ({ size, fill, className }) => {
-            const Icon = getIcon('Heart');
-            return <Icon size={size} fill={fill} className={className} />;
-        };
-        const Sparkles = ({ size, className }) => {
-            const Icon = getIcon('Sparkles');
-            return <Icon size={size} className={className} />;
-        };
-        const Play = ({ size, fill, className }) => {
-            const Icon = getIcon('Play');
-            return <Icon size={size} fill={fill} className={className} />;
-        };
-        const Square = ({ size, fill, className }) => {
-            const Icon = getIcon('Square');
-            return <Icon size={size} fill={fill} className={className} />;
-        };
-        const RefreshCw = ({ size, className }) => {
-            const Icon = getIcon('RefreshCw');
-            return <Icon size={size} className={className} />;
-        };
-
-        const MODEL_TEXT = "gemini-2.5-flash-preview-09-2025"; 
-        const apiKey = ""; // API key managed by environment
+        // --- Configuration & Constants ---
+        // ★Worker URLをデプロイ後に書き換えてください
+        const WORKER_URL  = "https://damp-morning-b89a.mg696.workers.dev";
+        const TEXT_MODEL  = "@cf/meta/llama-3.1-8b-instruct";
+        const IMAGE_MODEL = "@cf/bytedance/stable-diffusion-xl-lightning";
 
         const CHARACTERS = {
-          yuna: {
-            name: "ゆな",
-            color: "bg-pink-100",
-            textColor: "text-pink-600",
-            border: "border-pink-200",
-            icon: "🌸",
-            personality: "おっとりしていて、カフェ巡りが大好き。語尾に「〜だねぇ」「〜かなっ」がつく優しい口調。"
-          },
-          mami: {
-            name: "まみ",
-            color: "bg-blue-100",
-            textColor: "text-blue-600",
-            border: "border-blue-200",
-            icon: "🌹",
-            personality: "天真難漫で、ちょっと天然。キラキラしたものや可愛いものが大好き。元気だけどゆるい口調。"
-          }
+            yuna: {
+                name: "ゆな",
+                theme: "from-pink-50 to-rose-100",
+                bubble: "bg-pink-50 border-pink-200 text-pink-700",
+                accent: "text-rose-400",
+                icon: "🌸",
+                role: "Rose Sweet",
+                personality: "華やかで甘い香りのする20代の綺麗なお姉さん。サクラピンクのリボンやローズの香水、いちごパフェが大好き。少しお茶目で、相手を包み込むような優しさがある。「〜だねぇ」「〜なのっ」という甘い口調。"
+            },
+            mami: {
+                name: "まみ",
+                theme: "from-blue-50 to-indigo-100",
+                bubble: "bg-blue-50 border-blue-200 text-blue-700",
+                accent: "text-indigo-400",
+                icon: "💎",
+                role: "Blue Elegant",
+                personality: "透明感あふれる清楚でエレガントな20代の綺麗なお姉さん。シャーベットブルーのドレスやパールのピアス、ミントティーが大好き。少し天然で、星空のように澄んだ瞳をしている。「〜ですね」「〜かしら」という上品かつ親しみやすい口調。"
+            }
+        };
+
+        // Helper component for icons
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const iconRef = useRef(null);
+            useEffect(() => {
+                if (iconRef.current) {
+                    const icon = lucide.icons[name];
+                    if (icon) {
+                        lucide.createIcons({
+                            icons: { [name]: icon },
+                            attrs: { width: size, height: size, class: className }
+                        });
+                    }
+                }
+            }, [name, size, className]);
+            return <i ref={iconRef} data-lucide={name} className={className}></i>;
         };
 
         const App = () => {
-          const [messages, setMessages] = useState([]);
-          const [isTalking, setIsTalking] = useState(false);
-          const [currentSpeaker, setCurrentSpeaker] = useState('yuna');
-          const [loading, setLoading] = useState(false);
-          const [sceneImage, setSceneImage] = useState(null);
-          const [imageLoading, setImageLoading] = useState(false);
-          const [errorMessage, setErrorMessage] = useState(null);
-          const scrollRef = useRef(null);
+            const [messages, setMessages] = useState([]);
+            const [isTalking, setIsTalking] = useState(false);
+            const [currentSpeaker, setCurrentSpeaker] = useState('yuna');
+            const [loading, setLoading] = useState(false);
+            const [sceneImage, setSceneImage] = useState(null);
+            const [imageLoading, setImageLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const scrollRef = useRef(null);
 
-          useEffect(() => {
-            if (scrollRef.current) {
-              scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-            }
-          }, [messages]);
-
-          const callGemini = async (payload, retries = 5, delay = 1000) => {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_TEXT}:generateContent?key=${apiKey}`;
-            try {
-              const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-              });
-              if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-              const data = await response.json();
-              return data.candidates?.[0]?.content?.parts?.[0]?.text;
-            } catch (error) {
-              if (retries > 0) {
-                await new Promise(r => setTimeout(r, delay));
-                return callGemini(payload, retries - 1, delay * 2);
-              }
-              throw error;
-            }
-          };
-
-          const generateText = async (history) => {
-            const speaker = CHARACTERS[currentSpeaker];
-            const other = CHARACTERS[currentSpeaker === 'yuna' ? 'mami' : 'yuna'];
-            const systemPrompt = `あなたは日本の女の子「${speaker.name}」です。性格：${speaker.personality} 親友の「${other.name}」と二人でまったりガールズトークをしています。非常にゆるく、ふわふわした、癒やされる会話をしてください。相手の発言に反応しつつ、自然な日本語で2〜3文で返答してください。`;
-
-            let prompt = "";
-            if (history.length === 0) {
-              prompt = "会話を始めて！まずは挨拶から。ゆなとして話して。";
-            } else {
-              const historyText = history.slice(-5).map(m => `${m.name}: ${m.text}`).join("\n");
-              prompt = `これまでの会話:\n${historyText}\n\n次は${speaker.name}の番です。自然に会話を続けて。`;
-            }
-
-            try {
-              setErrorMessage(null);
-              const text = await callGemini({
-                contents: [{ parts: [{ text: prompt }] }],
-                systemInstruction: { parts: [{ text: systemPrompt }] }
-              });
-              return text;
-            } catch (e) {
-              console.error("Gemini Error:", e);
-              setErrorMessage("通信エラーかな？少し待ってからまた試してね.");
-              return null;
-            }
-          };
-
-          const generateImage = async (retryCount = 0) => {
-            if (imageLoading && retryCount === 0) return;
-            if (loading || messages.length === 0) return;
-            
-            setImageLoading(true);
-            setErrorMessage(null);
-
-            try {
-              const historyText = messages.slice(-5).map(m => m.text).join(" ");
-              const promptRequest = `Describe the current location of the conversation in 3 keywords. Reply ONLY with keywords separated by spaces. Example: "cafe sweets morning" \n\nConversation: ${historyText}`;
-              
-              const keywords = await callGemini({
-                contents: [{ parts: [{ text: promptRequest }] }]
-              });
-
-              let rawKeywords = keywords || "cozy room pastel";
-              const cleanKeywords = rawKeywords.replace(/[^a-zA-Z\s]/g, "").trim().split(/\s+/).join(" ");
-              
-              // 自然なスペース区切りプロンプト
-              const finalPrompt = `${cleanKeywords} anime background style soft lighting pastel aesthetic no-people`;
-              
-              const seed = Math.floor(Math.random() * 1000000);
-              const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
-              
-              const img = new Image();
-              const timeout = setTimeout(() => {
-                img.src = ""; 
-                if (retryCount < 2) {
-                    generateImage(retryCount + 1);
-                } else {
-                    setImageLoading(false);
-                    setErrorMessage("画像の生成がタイムアウトしました。");
+            useEffect(() => {
+                if (scrollRef.current) {
+                    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
                 }
-              }, 15000);
+            }, [messages]);
 
-              img.onload = () => {
-                clearTimeout(timeout);
-                setSceneImage(imageUrl);
-                setImageLoading(false);
-              };
-              img.onerror = () => {
-                clearTimeout(timeout);
-                if (retryCount < 2) {
-                    generateImage(retryCount + 1);
-                } else {
-                    setImageLoading(false);
-                    setErrorMessage("画像の表示に失敗しました。");
-                    console.error("Final Image load failure:", imageUrl);
+            // Worker経由でAPIを呼ぶ共通関数
+            const callWorker = async (model, payload, isImage = false, retries = 5) => {
+                let delay = 1000;
+                for (let i = 0; i < retries; i++) {
+                    try {
+                        const res = await fetch(WORKER_URL, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ model, payload })
+                        });
+                        if (res.ok) {
+                            return isImage ? await res.blob() : await res.json();
+                        }
+                        if (res.status === 429 || res.status >= 500) {
+                            await new Promise(r => setTimeout(r, delay));
+                            delay *= 2;
+                            continue;
+                        }
+                        const errText = await res.text();
+                        throw new Error(`Worker Error: ${res.status} - ${errText}`);
+                    } catch (e) {
+                        if (i === retries - 1) throw e;
+                        await new Promise(r => setTimeout(r, delay));
+                        delay *= 2;
+                    }
                 }
-              };
-              img.src = imageUrl;
+            };
 
-            } catch (e) {
-              console.error("Image Logic Error:", e);
-              setImageLoading(false);
-            }
-          };
+            const generateImage = async () => {
+                if (imageLoading) return;
+                setImageLoading(true);
+                setError(null);
 
-          const nextTurn = async () => {
-            if (loading || imageLoading) return;
-            setLoading(true);
-            const text = await generateText(messages);
-            if (text) {
-              setMessages(prev => [...prev, { 
-                id: Date.now(), 
-                speaker: currentSpeaker, 
-                name: CHARACTERS[currentSpeaker].name, 
-                text: text, 
-                icon: CHARACTERS[currentSpeaker].icon 
-              }]);
-              setCurrentSpeaker(prev => prev === 'yuna' ? 'mami' : 'yuna');
-            }
-            setLoading(false);
-          };
+                try {
+                    const lastContext = messages.slice(-4).map(m => m.text).join(" ");
+                    const situationPrompt = `Create a short, dreamy English description of a setting for two beautiful girls talking based on this: ${lastContext || "They are at a high-end afternoon tea"}. Focus on luxury desserts, pastel colors, and elegant vibes. Output only the description.`;
+                    
+                    // Step 1: Generate dynamic prompt text using Llama
+                    const textResult = await callWorker(TEXT_MODEL, {
+                        messages: [
+                            { role: "system", content: "You are a prompt engineer for image generation. Output only the prompt in English." },
+                            { role: "user", content: situationPrompt }
+                        ]
+                    }, false);
+                    
+                    const setting = textResult.result?.response || "A luxurious pastel cafe with crystal chandeliers and massive fruit parfaits.";
+                    
+                    const finalPrompt = `An ultra-high-quality, masterpiece cinematic 16:9 shot. Two beautiful Japanese women in their early 20s with distinctly different styles. Yuna: Pink-themed, warm, sweet, pink ribbons in wavy hair. Mami: Blue-themed, elegant, cool, pearl accessories in straight-to-wavy hair. They are enjoying yurufuwa girls talk. Aesthetic: Dreamy, pastel, yumekawa, emotional, chill, gorgeous, excellent, elegant. Scene: ${setting}. Include glistening parfaits, cakes, and sweets. Soft diffused lighting, glowing sparkles.`;
 
-          useEffect(() => {
-            let timer;
-            if (isTalking && !loading && !imageLoading && !errorMessage) {
-              timer = setTimeout(() => { nextTurn(); }, 10000); 
-            }
-            return () => clearTimeout(timer);
-          }, [isTalking, loading, imageLoading, currentSpeaker, errorMessage, messages.length]);
+                    // Step 2: Generate image using SDXL Lightning
+                    const imageBlob = await callWorker(IMAGE_MODEL, { prompt: finalPrompt }, true);
 
-          const toggleTalking = () => {
-            const turningOn = !isTalking;
-            setIsTalking(turningOn);
-            setErrorMessage(null);
-            if (turningOn && messages.length === 0) nextTurn();
-          };
+                    const imageUrl = URL.createObjectURL(imageBlob);
+                    setSceneImage(imageUrl);
+                } catch (e) {
+                    setError("お写真の準備がうまくいかなかったみたい...もう一度お願いしてみてね🌸");
+                } finally {
+                    setImageLoading(false);
+                }
+            };
 
-          const resetTalk = () => {
-            setMessages([]); 
-            setIsTalking(false); 
-            setCurrentSpeaker('yuna'); 
-            setSceneImage(null); 
-            setErrorMessage(null);
-          };
+            const nextTurn = async () => {
+                if (loading) return;
+                setLoading(true);
+                try {
+                    const speaker = CHARACTERS[currentSpeaker];
+                    const other = CHARACTERS[currentSpeaker === 'yuna' ? 'mami' : 'yuna'];
+                    
+                    const systemPrompt = `あなたは「${speaker.name}」です。${speaker.personality}
+                    現在は親友の「${other.name}」と二人きりで、最高に贅沢で甘い「パフェ＆ケーキ女子会」をしています。
+                    会話のテーマ：ゆるふわ、パステル、ゆめかわ、エモめろ、チル、ゴージャス、エレガント、癒やし、綺麗。
+                    相手の言葉を受けて、2〜3文で甘く優雅なメッセージを返してください。
+                    言葉遣い例：ゆな「〜だねぇ、ふわふわのクリームに癒やされちゃうなっ」、まみ「〜ですね、この紅茶の香り、とってもエレガントですわ」`;
 
-          return (
-            <div className="flex flex-col h-screen bg-slate-50 text-slate-800 overflow-hidden">
-              <header className="p-4 bg-white border-b flex justify-between items-center shadow-sm z-10">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 bg-pink-100 rounded-full text-pink-500">
-                    <Heart size={20} fill="currentColor" />
-                  </div>
-                  <h1 className="text-lg font-bold tracking-tighter">ゆるふわトークAI</h1>
-                </div>
-                <button onClick={resetTalk} className="p-2 text-slate-400 hover:text-slate-600 transition-colors bg-slate-50 rounded-full">
-                  <RefreshCw size={20} />
-                </button>
-              </header>
-              <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-                {/* 背景画像エリア: 30% */}
-                <div className="w-full md:w-[30%] h-[300px] md:h-full bg-slate-100 relative overflow-hidden flex flex-col shadow-inner border-r border-slate-200">
-                  <div className="absolute top-0 left-0 right-0 p-4 z-30 flex flex-col gap-2 bg-gradient-to-b from-black/20 to-transparent">
-                    <button 
-                      onClick={() => generateImage(0)} 
-                      disabled={imageLoading || loading || messages.length === 0}
-                      className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 shadow-lg rounded-xl font-bold transition-all active:scale-95 ${imageLoading || loading || messages.length === 0 ? 'bg-slate-100 text-slate-300 cursor-not-allowed border-transparent' : 'bg-white text-pink-500 hover:bg-pink-50 border border-pink-100'}`}
-                    >
-                      <Sparkles size={18} />
-                      <span className="text-xs">背景を更新</span>
-                    </button>
-                  </div>
+                    const history = messages.slice(-10).map(m => ({
+                        role: m.speaker === currentSpeaker ? "assistant" : "user",
+                        content: m.text
+                    }));
 
-                  <div className="flex-1 relative flex items-center justify-center bg-slate-200">
-                    {imageLoading && (
-                      <div className="absolute inset-0 z-20 bg-white/40 backdrop-blur-[2px] flex items-center justify-center">
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="animate-spin text-pink-400"><Sparkles size={32} /></div>
+                    const data = await callWorker(TEXT_MODEL, {
+                        messages: [
+                            { role: "system", content: systemPrompt },
+                            ...history,
+                            { role: "user", content: "会話を続けて。" }
+                        ]
+                    }, false);
+
+                    const response = data.result?.response;
+                    if (response) {
+                        setMessages(prev => [...prev, {
+                            id: Date.now(),
+                            speaker: currentSpeaker,
+                            name: speaker.name,
+                            text: response.trim(),
+                            icon: speaker.icon
+                        }]);
+                        setCurrentSpeaker(prev => prev === 'yuna' ? 'mami' : 'yuna');
+                    }
+                } catch (e) {
+                    setError("お話が途切れちゃった...少し待ってから声をかけてね。");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                let timer;
+                if (isTalking && !loading) {
+                    timer = setTimeout(nextTurn, 4000);
+                }
+                return () => clearTimeout(timer);
+            }, [isTalking, loading, currentSpeaker, messages.length]);
+
+            return (
+                <div className="flex flex-col h-screen max-w-xl mx-auto bg-[#fffcfd] shadow-2xl relative overflow-hidden text-slate-700">
+                    <div className="h-1 bg-gradient-to-r from-pink-200 via-purple-200 to-blue-200" />
+                    
+                    <header className="px-6 py-4 bg-white/80 backdrop-blur-md flex justify-between items-center z-20 border-b border-pink-50">
+                        <div className="flex items-center gap-2">
+                            <div className="bg-pink-100 p-1.5 rounded-full">
+                                <Icon name="Sparkles" className="text-pink-400" size={20} />
+                            </div>
+                            <div>
+                                <h1 className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400 text-lg">
+                                    Yurufuwa Elegant Talk
+                                </h1>
+                                <p className="text-[10px] text-pink-300 font-medium tracking-tighter uppercase">GORGEOUS EXCELLENT SWEETS TIME</p>
+                            </div>
                         </div>
-                      </div>
-                    )}
-                    {sceneImage ? (
-                      <img key={sceneImage} src={sceneImage} className="w-full h-full object-cover animate-fade-in" alt="Scene" />
-                    ) : (
-                      <div className="text-slate-400 flex flex-col items-center p-8 text-center justify-center w-full h-full">
-                        <Sparkles size={48} className="mb-4 opacity-10" />
-                        <p className="text-[10px]">背景を生成してください</p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end pointer-events-none z-20">
-                    <div className={`px-3 py-1.5 rounded-full border-2 transition-all duration-500 text-xs font-bold ${currentSpeaker === 'yuna' ? 'bg-pink-50 border-pink-300 scale-110 shadow-lg text-pink-600' : 'bg-white/80 border-transparent opacity-60 text-slate-400'}`}>🌸 ゆな</div>
-                    <div className={`px-3 py-1.5 rounded-full border-2 transition-all duration-500 text-xs font-bold ${currentSpeaker === 'mami' ? 'bg-blue-50 border-blue-300 scale-110 shadow-lg text-blue-600' : 'bg-white/80 border-transparent opacity-60 text-slate-400'}`}>🌹 まみ</div>
-                  </div>
-                </div>
-
-                {/* チャットエリア: 70% */}
-                <div className="flex-1 md:w-[70%] flex flex-col h-full bg-white shadow-2xl z-10">
-                  <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-b from-white to-pink-50/10">
-                    {messages.map((msg) => (
-                      <div key={msg.id} className={`flex w-full animate-in slide-in-from-bottom-2 duration-300 ${msg.speaker === 'yuna' ? 'justify-start' : 'justify-end'}`}>
-                        <div className={`flex max-w-[85%] ${msg.speaker === 'yuna' ? 'flex-row' : 'flex-row-reverse'} gap-2`}>
-                          <div className={`w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center text-xl shadow-sm border border-white ${CHARACTERS[msg.speaker].color}`}>{msg.icon}</div>
-                          <div className={`p-3 rounded-2xl border shadow-sm ${CHARACTERS[msg.speaker].color} ${CHARACTERS[msg.speaker].border}`}>
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                          </div>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => { setMessages([]); setSceneImage(null); setIsTalking(false); }}
+                                className="p-2 text-slate-300 hover:text-pink-400 hover:bg-pink-50 rounded-full transition-all"
+                            >
+                                <Icon name="RefreshCcw" size={18} />
+                            </button>
                         </div>
-                      </div>
-                    ))}
-                    {loading && (
-                      <div className={`flex w-full ${currentSpeaker === 'yuna' ? 'justify-start' : 'justify-end'}`}>
-                        <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex gap-1.5 shadow-sm">
-                          <div className="w-2 h-2 bg-pink-300 rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-pink-300 rounded-full animate-bounce delay-75"></div>
-                          <div className="w-2 h-2 bg-pink-300 rounded-full animate-bounce delay-150"></div>
+                    </header>
+
+                    <main className="flex-1 overflow-hidden flex flex-col relative">
+                        <div className="relative group overflow-hidden">
+                            <div className="aspect-[16/10] bg-[#fff5f8] relative">
+                                {sceneImage ? (
+                                    <img 
+                                        src={sceneImage} 
+                                        className="w-full h-full object-cover animate-in fade-in zoom-in duration-1000" 
+                                        alt="Sweet Scene" 
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center text-pink-200">
+                                        <Icon name="Coffee" size={48} className="opacity-20 mb-2" />
+                                        <p className="text-xs italic">Wonderful memories loading...</p>
+                                    </div>
+                                )}
+                                
+                                <div className="absolute top-3 right-3 flex flex-col gap-2">
+                                    <button 
+                                        onClick={generateImage}
+                                        disabled={imageLoading}
+                                        className={`p-3 rounded-2xl bg-white/90 shadow-lg border border-pink-100 text-pink-400 transition-all hover:scale-110 active:scale-95 flex flex-col items-center gap-1 ${imageLoading ? 'opacity-50 cursor-wait' : ''}`}
+                                    >
+                                        <Icon name="Image" size={20} />
+                                        <span className="text-[9px] font-bold">生成</span>
+                                    </button>
+                                </div>
+
+                                {imageLoading && (
+                                    <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] flex items-center justify-center z-10">
+                                        <div className="flex flex-col items-center">
+                                            <div className="relative">
+                                                <div className="w-12 h-12 border-4 border-pink-100 border-t-pink-400 rounded-full animate-spin"></div>
+                                                <div className="absolute inset-0 m-auto flex items-center justify-center">
+                                                    <Icon name="Heart" className="text-pink-300 animate-pulse" size={16} />
+                                                </div>
+                                            </div>
+                                            <span className="mt-3 text-[11px] font-bold text-pink-400 tracking-[0.2em] animate-pulse">CREATING MAGIC...</span>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                <div className="absolute bottom-4 left-4 right-4 flex justify-between pointer-events-none">
+                                    <div className={`px-4 py-1.5 rounded-full bg-white/90 backdrop-blur shadow-sm border flex items-center gap-2 transition-all duration-500 ${currentSpeaker === 'yuna' ? 'border-pink-300 scale-110 ring-2 ring-pink-100' : 'border-transparent opacity-60 scale-90'}`}>
+                                        <span className="text-sm">🌸</span>
+                                        <span className="text-xs font-bold text-pink-500">Yuna</span>
+                                    </div>
+                                    <div className={`px-4 py-1.5 rounded-full bg-white/90 backdrop-blur shadow-sm border flex items-center gap-2 transition-all duration-500 ${currentSpeaker === 'mami' ? 'border-blue-300 scale-110 ring-2 ring-blue-100' : 'border-transparent opacity-60 scale-90'}`}>
+                                        <span className="text-xs font-bold text-blue-500">Mami</span>
+                                        <span className="text-sm">💎</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                      </div>
+
+                        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-6 scroll-smooth bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-fixed">
+                            {messages.length === 0 && (
+                                <div className="h-full flex flex-col items-center justify-center text-pink-200 italic space-y-4">
+                                    <div className="w-20 h-20 border-2 border-dashed border-pink-100 rounded-full flex items-center justify-center">
+                                        <Icon name="Star" className="animate-spin-slow" />
+                                    </div>
+                                    <p className="text-sm">秘密の女子会を始めましょう...</p>
+                                </div>
+                            )}
+                            
+                            {messages.map((msg) => (
+                                <div key={msg.id} className={`flex ${msg.speaker === 'yuna' ? 'justify-start' : 'justify-end'} animate-in slide-in-from-bottom-4 duration-500`}>
+                                    <div className={`flex max-w-[85%] gap-3 ${msg.speaker === 'yuna' ? 'flex-row' : 'flex-row-reverse'}`}>
+                                        <div className={`relative flex-shrink-0`}>
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl bg-white shadow-md border-2 ${msg.speaker === 'yuna' ? 'border-pink-100' : 'border-blue-100'}`}>
+                                                {msg.icon}
+                                            </div>
+                                            <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center border border-white ${msg.speaker === 'yuna' ? 'bg-pink-400' : 'bg-blue-400'}`}>
+                                                <Icon name="Heart" className="text-white" size={8} />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <span className={`text-[10px] font-bold uppercase tracking-widest block ${msg.speaker === 'yuna' ? 'text-pink-400 ml-1' : 'text-blue-400 mr-1 text-right'}`}>
+                                                {msg.speaker === 'yuna' ? 'Rose Sweet' : 'Blue Elegant'}
+                                            </span>
+                                            <div className={`p-4 rounded-3xl shadow-sm border leading-relaxed text-sm relative ${CHARACTERS[msg.speaker].bubble}`}>
+                                                {msg.text}
+                                                <div className={`absolute top-0 ${msg.speaker === 'yuna' ? 'left-0' : 'right-0'} w-4 h-4 opacity-10`}>
+                                                    <Icon name="Star" size={12} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {loading && (
+                                <div className={`flex ${currentSpeaker === 'yuna' ? 'justify-start' : 'justify-end'} animate-pulse`}>
+                                    <div className="flex gap-2 items-center px-4 py-2 bg-white rounded-full border border-pink-50 shadow-sm">
+                                        <div className="w-1.5 h-1.5 bg-pink-300 rounded-full animate-bounce"></div>
+                                        <div className="w-1.5 h-1.5 bg-pink-300 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                                        <div className="w-1.5 h-1.5 bg-pink-300 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </main>
+
+                    {error && (
+                        <div className="absolute top-20 left-4 right-4 bg-rose-50/90 backdrop-blur border border-rose-100 text-rose-500 px-4 py-2 rounded-xl text-xs text-center shadow-xl z-50 flex items-center justify-center gap-2">
+                            <Icon name="Star" size={12} />
+                            {error}
+                        </div>
                     )}
-                    {errorMessage && <div className="mx-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-[10px] text-center">{errorMessage}</div>}
-                  </div>
-                  <div className="p-4 bg-white border-t">
-                    <button onClick={toggleTalking} disabled={loading} className={`w-full py-4 rounded-2xl flex items-center justify-center gap-2 font-bold text-white transition-all transform active:scale-95 shadow-md ${isTalking ? 'bg-slate-700 hover:bg-slate-800' : 'bg-pink-400 hover:bg-pink-500'}`}>
-                      {isTalking ? <><Square size={20} fill="currentColor" /> 停止</> : <><Play size={20} fill="currentColor" /> トーク開始</>}
-                    </button>
-                  </div>
+
+                    <footer className="p-6 bg-white border-t border-pink-50 z-30">
+                        <div className="flex gap-4">
+                            <button 
+                                onClick={() => {
+                                    const next = !isTalking;
+                                    setIsTalking(next);
+                                    setError(null);
+                                    if (next && messages.length === 0) {
+                                        nextTurn();
+                                        generateImage();
+                                    }
+                                }}
+                                className={`flex-1 group relative py-4 rounded-[2rem] font-bold text-white shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3 overflow-hidden ${isTalking ? 'bg-slate-300' : 'bg-gradient-to-br from-pink-300 via-rose-300 to-purple-300'}`}
+                            >
+                                <div className="absolute inset-0 bg-white/20 translate-y-[-50%] skew-y-12 opacity-0 group-hover:opacity-100 transition-all pointer-events-none" />
+                                
+                                {isTalking ? (
+                                    <><Icon name="CircleStop" size={22} className="text-white/80" /> お休みする</>
+                                ) : (
+                                    <><Icon name="MessageCircleHeart" size={22} className="animate-pulse" /> トーク開始</>
+                                )}
+                            </button>
+                        </div>
+                        
+                        <p className="mt-4 text-center text-[10px] text-pink-200 font-medium tracking-[0.3em] uppercase">
+                            ✦ Premium Girls Talk Session ✦
+                        </p>
+                    </footer>
+
+                    <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden">
+                        <div className="absolute top-[20%] left-[10%] opacity-20 animate-pulse"><Icon name="Sparkles" className="text-pink-200" size={14} /></div>
+                        <div className="absolute top-[60%] right-[15%] opacity-20 animate-pulse delay-700"><Icon name="Sparkles" className="text-blue-200" size={12} /></div>
+                        <div className="absolute bottom-[25%] left-[20%] opacity-20 animate-pulse delay-500"><Icon name="Heart" className="text-pink-100" size={10} /></div>
+                    </div>
                 </div>
-              </main>
-            </div>
-          );
+            );
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
